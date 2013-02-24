@@ -1,0 +1,14 @@
+syntax: glob
+
+*.egg-info
+*.pyc
+.installed.cfg
+bin
+buildout.cfg
+develop-eggs
+eggs
+initial_data.json
+parts
+src/bliubliu/settings.py
+tags
+var
