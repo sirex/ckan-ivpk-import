@@ -15,9 +15,10 @@
 # You should have received a copy of the GNU General Public License
 # along with ckan-ivpk-import.  If not, see <http://www.gnu.org/licenses/>.
 
-import re
-import unidecode
 import datetime
+import re
+import sys
+import unidecode
 
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
@@ -138,7 +139,7 @@ def get_tags(dataset):
     tags = []
     for tag in dataset.r_zodziai.split(','):
         tag = slugify(tag.strip())
-        tags.append(tag)
+        if tag: tags.append(tag)
     return tags
 
 
@@ -156,6 +157,20 @@ def get_extras(dataset):
     return extras
 
 
+def query_ivpk_codes(ckan):
+    codes = {}
+    for name in ckan.package_register_get():
+        dataset = ckan.package_entity_get(name)
+        try:
+            code = dataset['extras']['IVPK kodas']
+        except KeyError:
+            pass
+        else:
+            if code:
+                codes[code] = dataset['name']
+    return codes
+
+
 def query_datasets_to_import(session):
     return (
         session.query(Rinkmena, Istaiga, Formatas, Rusis).
@@ -167,7 +182,7 @@ def query_datasets_to_import(session):
     )
 
 
-def update_datasets(ckan, qry):
+def update_datasets(ckan, qry, codes):
     for dataset, institution, formatas, rusis in qry:
         if institution:
             institution_title = institution.pavadinimas
@@ -184,21 +199,39 @@ def update_datasets(ckan, qry):
             'extras': get_extras(dataset),
             'notes': get_notes(dataset, formatas, rusis),
         }
-        print(data['title'])
 
-        try:
-            ckan.package_register_post(data)
-        except ckanclient.CkanApiConflictError:
-            # FIXME: pass for now, but existing datasets should be known and
-            # updated.
-            print('Skip.')
+        code = data['extras']['IVPK kodas']
+        if code in codes:
+            name = codes[code]
+            print('UPDATE: [%d] %s' % (code, name))
+            try:
+                ckan.package_entity_put(data, name)
+            except ckanclient.CkanApiConflictError:
+                data['name'] += '-%d' % code
+                ckan.package_entity_put(data, name)
+        else:
+            print('INSERT: [%d] %s' % (code, data['name']))
+            try:
+                ckan.package_register_post(data)
+            except ckanclient.CkanApiConflictError:
+                data['name'] += '-%d' % code
+                ckan.package_register_post(data)
 
 
 def main():
-    dbi = 'mysql://root:@localhost/rinkmenos?charset=utf8'
-    api_key = '9736a753-7d17-4bff-a62c-afca37d8fda0'
-    ckan_url = 'http://localhost:5000'
+    if len(sys.argv) < 4:
+        print('Error: missing required parametres.')
+        print('Usage: ivpkimport <ckan-api-key> <dbi> <ckan-url>')
+        print('Example:')
+        print('')
+        print('  ivpkimport 1d836686-1f13-42f6-ae7e-9172fe972294'
+                          ' mysql://root:@localhost/rinkmenos?charset=utf8'
+                          ' http://www.atviriduomenys.lt')
+        return
 
+    api_key = sys.argv[1]
+    dbi = sys.argv[2]
+    ckan_url = sys.argv[3]
 
     engine = create_engine(dbi)
 
@@ -211,4 +244,6 @@ def main():
     ckan = ckanclient.CkanClient(base_location='%s/api' % ckan_url, api_key=api_key)
 
     qry = query_datasets_to_import(session)
-    update_datasets(ckan, qry)
+    print('Query existing IVPK datasets from CKAN...')
+    codes = query_ivpk_codes(ckan)
+    update_datasets(ckan, qry, codes)
