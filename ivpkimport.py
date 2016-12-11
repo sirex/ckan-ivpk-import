@@ -1,9 +1,15 @@
-import re
-import unidecode
 import argparse
+import json
+import re
 import textwrap
+import uuid
+import unidecode
 
-import ckanclient
+
+def read_jsonl(path):
+    with open(path, encoding='utf-8') as f:
+        for line in f:
+            yield json.loads(line.strip())
 
 
 def slugify(title=None, length=60):
@@ -14,11 +20,11 @@ def slugify(title=None, length=60):
     slug = unidecode.unidecode(title)
 
     # Make slug.
-    slug = str(re.sub('[^\w\s-]', '', slug).strip().lower())
-    slug = re.sub('[-\s]+', '-', slug)
+    slug = str(re.sub(r'[^\w\s-]', '', slug).strip().lower())
+    slug = re.sub(r'[-\s]+', '-', slug)
 
     # Make sure, that slug is not longer that specied in `length`.
-    begining_chars = length / 5
+    begining_chars = length // 5
     if len(slug) > length:
         words = slug.split('-')
         a, b = [], []
@@ -28,157 +34,106 @@ def slugify(title=None, length=60):
             else:
                 b.insert(0, words.pop())
         if b:
-            slug = '-'.join(a) + '---' + '-'.join(b)
+            slug = '-'.join(a) + '--' + '-'.join(b)
         else:
             slug = '-'.join(a)
 
     return slug[:length + begining_chars]
 
 
-def get_notes(dataset, formatas, rusis):
-    notes = []
+def split_contact_info(value):
+    result = {'email': [], 'phone': [], 'name': []}
 
-    if dataset.pastabos:
-        notes.append(dataset.pastabos)
-
-    if dataset.santrauka:
-        notes.extend([
-            '',
-            dataset.santrauka,
-        ])
-
-    if dataset.patik_priezastys:
-        notes.extend([
-            '',
-            dataset.patik_priezastys,
-        ])
-
-    if dataset.atnaujinimas:
-        notes.extend([
-            '',
-            'Atnaujinimas',
-            '------------',
-            '',
-            dataset.atnaujinimas,
-        ])
-
-    if dataset.teikimas:
-        notes.extend([
-            '',
-            'Teikimas',
-            '--------',
-            '',
-            dataset.teikimas,
-        ])
-
-    if formatas or dataset.formatas_alt:
-        notes.extend([
-            '',
-            'Formatas',
-            '--------',
-        ])
-        if formatas:
-            notes.extend([
-                '',
-                formatas.pavadinimas,
-            ])
-        if dataset.formatas_alt:
-            notes.extend([
-                '',
-                dataset.formatas_alt,
-            ])
-
-    if rusis or dataset.formatas_alt:
-        notes.extend([
-            '',
-            'Rūšis',
-            '-----',
-        ])
-        if rusis:
-            notes.extend([
-                '',
-                rusis.pavadinimas,
-            ])
-        if dataset.rusis_alt:
-            notes.extend([
-                '',
-                dataset.rusis_alt,
-            ])
-
-    return '\n'.join(notes)
-
-
-def get_tags(dataset):
-    tags = []
-    for tag in dataset.r_zodziai.split(','):
-        tag = slugify(tag.strip())
-        if tag:
-            tags.append(tag)
-    return tags
-
-
-def get_extras(dataset):
-    extras = dict()
-    if dataset.alt_pavadinimas:
-        extras['Alternatyvus pavadinimas'] = dataset.alt_pavadinimas
-
-    if dataset.kodas:
-        extras['IVPK kodas'] = dataset.kodas
-
-    if dataset.k_telefonas:
-        extras['Kontaktinis telefonas'] = dataset.k_telefonas
-
-    return extras
-
-
-def query_ivpk_codes(ckan):
-    codes = {}
-    for name in ckan.package_register_get():
-        dataset = ckan.package_entity_get(name)
-        try:
-            code = dataset['extras']['IVPK kodas']
-        except KeyError:
-            pass
+    last_type = None
+    for part in value.split():
+        if '@' in part:
+            this_type = 'email'
+        elif re.search(r'\d', part):
+            this_type = 'phone'
         else:
-            if code:
-                codes[code] = dataset['name']
-    return codes
+            this_type = 'name'
 
-
-def update_datasets(ckan, qry, codes):
-    for dataset, institution, formatas, rusis in qry:
-        if institution:
-            institution_title = institution.pavadinimas
+        if last_type == this_type:
+            result[this_type][-1] += ' ' + part
         else:
-            institution_title = dataset.istaiga_alt
+            result[this_type].append(part)
 
-        data = {
-            'name': slugify(dataset.pavadinimas),
-            'title': dataset.pavadinimas,
-            'url': dataset.tinklapis,
-            'author': institution_title,
-            'author_email': dataset.k_email,
-            'tags': get_tags(dataset),
-            'extras': get_extras(dataset),
-            'notes': get_notes(dataset, formatas, rusis),
+        last_type = this_type
+
+    for k, v in result.items():
+        v = [x.strip() for x in v]
+        result[k] = v[0] if v else None
+
+    return result
+
+
+class IvpkToCkan:
+
+    # "Pavadinimas": "2013 m. viršutinės kelio dangos duomenys",
+    # "Apibūdinimas": "Pateikiama informacija: duomenų data, kelio numeris, ruožo pradžia, ruožo pabaiga, dangos tipas",
+    # "Kontaktiniai duomenys": "(8 5) 232 9640 vytautas.timukas@lakd.lt",
+    # "Internetinis adresas": "http://www.lakd.lt/files/atviri_duomenys/danga2013.csv",
+    # "Rinkmenos tvarkytojas": "Lietuvos automobilių kelių direkcija",
+    # "Reikšminiai žodžiai": "keliai, dangos",
+    # "Kodas": "6055",
+    # "key": "http://opendata.gov.lt/index.php?vars=/public/public/print/566/",
+
+    # "Rinkmenos duomenų teikimo sąlygos": "Skelbiama internete",
+    # "Duomenų patikimumas": "Įstaiga prisiima atsakomybę",
+    # "Atnaujinimo dažnumas": "Kartą per metus",
+    # "Rinkmenos rūšis": "Kita",
+    # "Alternatyvus pavadinimas": "",
+    # "Rinkmenos pabaigos data": "2013",
+    # "Rinkmenos aprašymo publikavimo duomenys": "2016-12-05 17:07:50",
+    # "Duomenų formatas": "CSV formatas",
+    # "Duomenų išsamumas": "Visi duomenys sukaupti",
+    # "Rinkmenos pradžios data": "2013",
+    # "Kategorija (informacijos sritis)": "Transportas ir ryšiai"
+
+    def convert(self, data):
+        maintainer = split_contact_info(data['Kontaktiniai duomenys'])
+
+        organization = self.get_organization(data['Rinkmenos tvarkytojas']) or {
+            'id': str(uuid.uuid4()),
+            'type': 'organization',
+            'name': slugify(data['Rinkmenos tvarkytojas']),
+            'title': data['Rinkmenos tvarkytojas'],
+            'approval_status': 'approved',
+            'is_organization': True,
+            'state': 'active',
         }
 
-        code = data['extras']['IVPK kodas']
-        if code in codes:
-            name = codes[code]
-            print('UPDATE: [%d] %s' % (code, name))
-            try:
-                ckan.package_entity_put(data, name)
-            except ckanclient.CkanApiConflictError:
-                data['name'] += '-%d' % code
-                ckan.package_entity_put(data, name)
-        else:
-            print('INSERT: [%d] %s' % (code, data['name']))
-            try:
-                ckan.package_register_post(data)
-            except ckanclient.CkanApiConflictError:
-                data['name'] += '-%d' % code
-                ckan.package_register_post(data)
+        tags = [
+            self.get_tag(x) or {
+                'id': str(uuid.uuid4()),
+                'display_name': x,
+                'name': x,
+                'state': 'active',
+                'vocabulary_id': None
+            }
+            for x in map(str.strip, data['Reikšminiai žodžiai'].split(','))
+        ]
+
+        # See: https://github.com/ckan/ckan/blob/master/ckan/logic/schema.py
+        return self.get_dataset(data['Kodas']) or {
+            'id': str(uuid.uuid4()),
+            'name': slugify(data['Pavadinimas']),
+            'title': data['Pavadinimas'],
+            'notes': data['Apibūdinimas'],
+            'maintainer': maintainer['name'] or '',
+            'maintainer_email': maintainer['email'],
+            'url': data['Internetinis adresas'],
+            'organization': organization,
+            'owner_org': organization['id'],
+            'private': False,
+            'state': 'active',
+            'tags': tags,
+            'type': 'dataset',
+            'extras': [
+                {'key': 'ivpk code', 'value': data['Kodas']},
+                {'key': 'ivpk url', 'value': data['key']}
+            ],
+        }
 
 
 def main():
@@ -187,18 +142,19 @@ def main():
         description=textwrap.dedent('''\
         Example:
 
-            ivpkimport 1d836686-1f13-42f6-ae7e-9172fe972294 data/ivpk/opendata-gov-lt/datasets.jsonl http://opendata.lt
+            ivpkimport ckan.jsonl ivpk.jsonl ckan-ivpk.jsonl
         ''')
     )
 
     parser = argparse.ArgumentParser()
-    parser.add_argument('api-key')
-    parser.add_argument('data-file')
-    parser.add_argument('ckan-url')
+    parser.add_argument('ckan', help='jsonl ckanapi dump')
+    parser.add_argument('ivpk', help='raw ivpk data from atviriduomenys.lt/data/ivpk')
+    parser.add_argument('output', help='output form jsonl ckanapi dump file')
     args = parser.parse_args()
 
-    ckan = ckanclient.CkanClient(base_location='%s/api' % args.ckan_url, api_key=args.api_key)
+    ivpk2ckan = IvpkToCkan()
 
-    print('Query existing IVPK datasets from CKAN...')
-    codes = query_ivpk_codes(ckan)
-    update_datasets(ckan, codes)
+    for data in read_jsonl(args.ivpk):
+        ckan = ivpk2ckan.convert(data)
+        print(json.dumps(ckan, indent=2))
+        break
