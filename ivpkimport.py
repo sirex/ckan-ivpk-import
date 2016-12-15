@@ -90,6 +90,15 @@ class IvpkToCkan:
     # "Rinkmenos pradžios data": "2013",
     # "Kategorija (informacijos sritis)": "Transportas ir ryšiai"
 
+    def get_organization(self, title):
+        return None
+
+    def get_tag(self, name):
+        return None
+
+    def get_dataset(self, code):
+        return None
+
     def convert(self, data):
         maintainer = split_contact_info(data['Kontaktiniai duomenys'])
 
@@ -111,7 +120,7 @@ class IvpkToCkan:
                 'state': 'active',
                 'vocabulary_id': None
             }
-            for x in map(str.strip, data['Reikšminiai žodžiai'].split(','))
+            for x in map(str.strip, data['Reikšminiai žodžiai'].split(';'))
         ]
 
         # See: https://github.com/ckan/ckan/blob/master/ckan/logic/schema.py
