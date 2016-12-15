@@ -4,6 +4,9 @@ import re
 import textwrap
 import uuid
 import unidecode
+import logging
+
+logger = logging.getLogger(__name__)
 
 
 def read_jsonl(path):
@@ -45,7 +48,7 @@ def split_contact_info(value):
     result = {'email': [], 'phone': [], 'name': []}
 
     last_type = None
-    for part in value.split():
+    for part in value.split() if value else []:
         if '@' in part:
             this_type = 'email'
         elif re.search(r'\d', part):
@@ -100,7 +103,7 @@ class IvpkToCkan:
         return None
 
     def convert(self, data):
-        maintainer = split_contact_info(data['Kontaktiniai duomenys'])
+        maintainer = split_contact_info(data.get('Kontaktiniai duomenys'))
 
         organization = self.get_organization(data['Rinkmenos tvarkytojas']) or {
             'id': str(uuid.uuid4()),
@@ -159,11 +162,30 @@ def main():
     parser.add_argument('ckan', help='jsonl ckanapi dump')
     parser.add_argument('ivpk', help='raw ivpk data from atviriduomenys.lt/data/ivpk')
     parser.add_argument('output', help='output form jsonl ckanapi dump file')
+    parser.add_argument('-l', '--log', default='WARNING', help='log level, one of: debug, info, warning, error')
     args = parser.parse_args()
+
+    logging.basicConfig(format='%(asctime)s %(levelname)s %(message)s', level=getattr(logging, args.log.upper()))
 
     ivpk2ckan = IvpkToCkan()
 
-    for data in read_jsonl(args.ivpk):
-        ckan = ivpk2ckan.convert(data)
-        print(json.dumps(ckan, indent=2))
-        break
+    with open(args.output, 'w', encoding='utf-8') as f:
+        for data in read_jsonl(args.ivpk):
+            if not data.get('Kodas'):
+                logger.warn('skip entry without Kodas: %s', data['key'])
+                continue
+
+            logger.info('importing %s', data['key'])
+
+            try:
+                ckan = ivpk2ckan.convert(data)
+            except:
+                logger.error(
+                    "error while converting\n%s",
+                    json.dumps(data, indent=2, ensure_ascii=False).
+                    replace(r'\n', '\n').
+                    replace(r'\t', '  ')
+                )
+                raise
+
+            f.write(json.dumps(ckan) + '\n')
