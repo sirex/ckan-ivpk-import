@@ -80,4 +80,24 @@ deployed::
   ckanapi load datasets --input=data/both.jsonl -c production.ini
 
 
+How to test data import locally
+-------------------------------
+
+In order to test data import locally you can use ``ckan.yml`` Ansible_ script.
+Whole CKAN stack will be installed into your machine with this single command
+(only tested on Ubuntu 16.04)::
+
+  ansible-playbook --ask-become-pass -c local -i ckan, -e path=$PWD ckan.yml
+
+What CKAN is installed, you can run it like this::
+
+  venv/bin/paster serve development.ini
+
+Then to test the import, run following command::
+
+  venv/bin/ckanapi load datasets --input=data/both.jsonl -c development.ini
+
+
+
+.. _Ansible: http://docs.ansible.com/ansible/intro_installation.html
 .. _Python package management: What you need to know before starting
