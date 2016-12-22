@@ -127,6 +127,7 @@ class IvpkToCkan:
         ]
 
         # See: https://github.com/ckan/ckan/blob/master/ckan/logic/schema.py
+        #      http://docs.ckan.org/en/latest/api/index.html#module-ckan.logic.action.create
         return self.get_dataset(data['Kodas']) or {
             'id': str(uuid.uuid4()),
             'name': slugify(data['Pavadinimas']),
