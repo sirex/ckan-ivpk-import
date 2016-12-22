@@ -121,7 +121,7 @@
       file: src={{ ckan }}/who.ini dest={{ path }}/who.ini state=link
 
     - name: create ckan configuration file
-      command: "{{ venv }}/bin/paster --plugin=ckan make-config ckan {{ config }} creates={{ config }}"
+      command: "{{ venv }}/bin/paster make-config ckan {{ config }} creates={{ config }} chdir={{ ckan }}"
 
     - name: configure ckan
       lineinfile:

@@ -44,41 +44,17 @@ Running automated tests
 How to use this tool
 --------------------
 
-First of all you need to export data from opendata.gov.lt website, for this you
-can use following script:
+Command bellow::
 
-https://github.com/sirex/databot-bots/blob/master/bots/ivpk/opendata-gov-lt.py
+  ivpkimport data/ http://opendata.lt/
 
-You can find already exported data here (``datasets.jsonl`` file):
+Will produce ``data/orgs-new.jsonl`` and ``data/datasets-new.jsonl`` files. You
+can use these file to import data to CKAN::
 
-http://atviriduomenys.lt/data/ivpk/opendata-gov-lt/
+  ckanapi load organizations --input=data/organizations-new.jsonl -c production.ini
+  ckanapi load datasets --input=data/datasets-new.jsonl -c production.ini
 
-You can download already exported opendata.gov.lt data using this command::
-
-  wget http://atviriduomenys.lt/data/ivpk/opendata-gov-lt/datasets.jsonl -O data/ivpk.jsonl
-
-For all commands below to to work, make sure, that you installed
-``ckan-ivpk-import`` as described in `How to install`_ section.
-
-Then you need to export target CKAN data, in order to keep existing data
-updated if some datasets are already described in both places. To export data,
-you can use this command::
-
-  ckanapi dump datasets --all -O data/opendata.jsonl -r http://opendata.lt/
-
-Once you have exported data from both, opendata.gov.lt and your CKAN website,
-for example opendata.lt, then you can create new CKAN dump, by combining data
-from both sources::
-
-  ivpkimport data/opendata.jsonl data/ivpk.jsonl data/both.jsonl
-
-
-Finally you can update CKAN website with new data. In order to update CKAN you
-have to run ``ckanapi load datasets`` command from server where CKAN is
-deployed::
-
-  ckanapi load datasets --input=data/both.jsonl -c production.ini
-
+``ivpkimport`` script will only generate missing or updated entries.
 
 How to test data import locally
 -------------------------------
@@ -89,15 +65,29 @@ Whole CKAN stack will be installed into your machine with this single command
 
   ansible-playbook --ask-become-pass -c local -i ckan, -e path=$PWD ckan.yml
 
-What CKAN is installed, you can run it like this::
+When CKAN is installed, you can run it like this::
 
   venv/bin/paster serve development.ini
 
 Then to test the import, run following command::
 
+  venv/bin/pip install ckanapi
   venv/bin/ckanapi load datasets --input=data/both.jsonl -c development.ini
 
+
+Canonical list of organizations
+-------------------------------
+
+Canonical list of organization names was borrowed from e-tar.lt_, using this
+JavaScript snippet from JavaScript console:
+
+.. code-block:: javascript
+
+    for (let x of $x('//div[@id="contentForm:searchParamPane:j_id_2j:tree"]//span[contains(@class, "ui-treenode-label")]/span/text()')) {
+        console.log(x.data);
+    }
 
 
 .. _Ansible: http://docs.ansible.com/ansible/intro_installation.html
 .. _Python package management: What you need to know before starting
+.. _e-tar.lt: https://www.e-tar.lt/portal/lt/legalActSearch

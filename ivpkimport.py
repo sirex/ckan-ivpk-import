@@ -5,6 +5,8 @@ import textwrap
 import uuid
 import unidecode
 import logging
+import os.path
+import subprocess
 
 logger = logging.getLogger(__name__)
 
@@ -70,83 +72,174 @@ def split_contact_info(value):
     return result
 
 
-class IvpkToCkan:
+def get_ckan_orgs(ckan_url, orgs_old_file):
+    logger.info('export existing organizations from %s', ckan_url)
+    subprocess.check_call([
+        'ckanapi', 'dump', 'organizations', '--all',
+        '-O', orgs_old_file,
+        '-r', ckan_url,
+    ])
 
-    # "Pavadinimas": "2013 m. viršutinės kelio dangos duomenys",
-    # "Apibūdinimas": "Pateikiama informacija: duomenų data, kelio numeris, ruožo pradžia, ruožo pabaiga, dangos tipas",
-    # "Kontaktiniai duomenys": "(8 5) 232 9640 vytautas.timukas@lakd.lt",
-    # "Internetinis adresas": "http://www.lakd.lt/files/atviri_duomenys/danga2013.csv",
-    # "Rinkmenos tvarkytojas": "Lietuvos automobilių kelių direkcija",
-    # "Reikšminiai žodžiai": "keliai, dangos",
-    # "Kodas": "6055",
-    # "key": "http://opendata.gov.lt/index.php?vars=/public/public/print/566/",
+    orgs = {}
 
-    # "Rinkmenos duomenų teikimo sąlygos": "Skelbiama internete",
-    # "Duomenų patikimumas": "Įstaiga prisiima atsakomybę",
-    # "Atnaujinimo dažnumas": "Kartą per metus",
-    # "Rinkmenos rūšis": "Kita",
-    # "Alternatyvus pavadinimas": "",
-    # "Rinkmenos pabaigos data": "2013",
-    # "Rinkmenos aprašymo publikavimo duomenys": "2016-12-05 17:07:50",
-    # "Duomenų formatas": "CSV formatas",
-    # "Duomenų išsamumas": "Visi duomenys sukaupti",
-    # "Rinkmenos pradžios data": "2013",
-    # "Kategorija (informacijos sritis)": "Transportas ir ryšiai"
+    logger.info('read existing organizations from %s', orgs_old_file)
+    for data in read_jsonl(orgs_old_file):
+        extras = {x['key']: x['value'] for x in data.get('extras', [])}
+        if 'IVPK Title' in extras:
+            orgs[extras['IVPK Title']] = data
+        else:
+            orgs[data['title']] = data
 
-    def get_organization(self, title):
-        return None
+    return orgs
 
-    def get_tag(self, name):
-        return None
 
-    def get_dataset(self, code):
-        return None
+def create_orgs_new_file(orgs, ivpk_export_file, orgs_new_file):
+    with open(orgs_new_file, 'w', encoding='utf-8') as f:
+        logger.info('read ivpk organizations from %s into %s', ivpk_export_file, orgs_new_file)
+        for data in read_jsonl(ivpk_export_file):
+            if not data.get('Kodas'):
+                logger.warn('skip entry without Kodas: %s', data['key'])
+                continue
 
-    def convert(self, data):
-        maintainer = split_contact_info(data.get('Kontaktiniai duomenys'))
+            title = data['Rinkmenos tvarkytojas']
 
-        organization = self.get_organization(data['Rinkmenos tvarkytojas']) or {
-            'id': str(uuid.uuid4()),
-            'type': 'organization',
-            'name': slugify(data['Rinkmenos tvarkytojas']),
-            'title': data['Rinkmenos tvarkytojas'],
-            'approval_status': 'approved',
-            'is_organization': True,
-            'state': 'active',
-        }
+            write = False
 
-        tags = [
-            self.get_tag(x) or {
-                'id': str(uuid.uuid4()),
-                'display_name': x,
-                'name': x,
-                'state': 'active',
-                'vocabulary_id': None
-            }
-            for x in map(str.strip, data['Reikšminiai žodžiai'].split(';'))
-        ]
+            if title not in orgs:
+                write = True
+                org = {
+                    'id': str(uuid.uuid4()),
+                    'type': 'organization',
+                    'name': slugify(title),
+                    'title': title,
+                    'approval_status': 'approved',
+                    'is_organization': True,
+                    'state': 'active',
+                    'extras': [
+                        {'key': 'IVPK Title', 'value': title},
+                    ],
+                }
+                orgs[title] = org
+            else:
+                org = orgs[title]
 
-        # See: https://github.com/ckan/ckan/blob/master/ckan/logic/schema.py
-        #      http://docs.ckan.org/en/latest/api/index.html#module-ckan.logic.action.create
-        return self.get_dataset(data['Kodas']) or {
-            'id': str(uuid.uuid4()),
-            'name': slugify(data['Pavadinimas']),
-            'title': data['Pavadinimas'],
-            'notes': data['Apibūdinimas'],
-            'maintainer': maintainer['name'] or '',
-            'maintainer_email': maintainer['email'],
-            'url': data['Internetinis adresas'],
-            'organization': organization,
-            'owner_org': organization['id'],
-            'private': False,
-            'state': 'active',
-            'tags': tags,
-            'type': 'dataset',
-            'extras': [
-                {'key': 'ivpk code', 'value': data['Kodas']},
-                {'key': 'ivpk url', 'value': data['key']}
-            ],
-        }
+            extras = {x['key']: x['value'] for x in org.get('extras', [])}
+
+            if 'extras' not in org:
+                org['extras'] = []
+
+            if 'IVPK Title' not in extras:
+                write = True
+                org['extras'].append({'key': 'IVPK Title', 'value': title})
+
+            if write:
+                logger.debug('export organization %s', data['key'])
+                f.write(json.dumps(orgs[title]) + '\n')
+
+
+def get_ckan_datasets(ckan_url, datasets_old_file):
+    logger.info('export existing datasets from %s', ckan_url)
+    subprocess.check_call([
+        'ckanapi', 'dump', 'datasets', '--all',
+        '-O', datasets_old_file,
+        '-r', ckan_url,
+    ])
+
+    tags = {}
+    datasets = {}
+
+    logger.info('read existing organizations from %s', datasets_old_file)
+    for data in read_jsonl(datasets_old_file):
+        extras = {x['key']: x['value'] for x in data.get('extras', [])}
+
+        if 'IVPK Code' in extras:
+            datasets[extras['IVPK Code']] = data
+
+        for tag in data.get('tags', []):
+            tags[tag['name'].lower()] = tag
+
+    return tags, datasets
+
+
+def create_datasets_new_file(orgs, tags, datasets, ivpk_export_file, datasets_new_file):
+    # See: https://github.com/ckan/ckan/blob/master/ckan/logic/schema.py
+    #      http://docs.ckan.org/en/latest/api/index.html#module-ckan.logic.action.create
+
+    with open(datasets_new_file, 'w', encoding='utf-8') as f:
+        logger.info('convert ivpk datasets to ckan format')
+        for data in read_jsonl(ivpk_export_file):
+            if not data.get('Kodas'):
+                logger.warn('skip entry without Kodas: %s', data['key'])
+                continue
+
+            logger.debug('importing %s', data['key'])
+
+            maintainer = split_contact_info(data.get('Kontaktiniai duomenys'))
+            organization = orgs[data['Rinkmenos tvarkytojas']]
+
+            write = False
+
+            if data['Kodas'] not in datasets:
+                write = True
+                dataset = {
+                    'id': str(uuid.uuid4()),
+                    'name': slugify(data['Pavadinimas']),
+                    'title': data['Pavadinimas'],
+                    'notes': data['Apibūdinimas'],
+                    'maintainer': maintainer['name'] or '',
+                    'maintainer_email': maintainer['email'],
+                    'url': data['Internetinis adresas'],
+                    'organization': organization,
+                    'owner_org': organization['id'],
+                    'private': False,
+                    'state': 'active',
+                    'tags': [],
+                    'type': 'dataset',
+                    'extras': [
+                        {'key': 'IVPK Code', 'value': data['Kodas']},
+                        {'key': 'IVPK URL', 'value': data['key']}
+                    ],
+                }
+            else:
+                dataset = datasets[data['Kodas']]
+
+            dataset_tags = [x['name'].lower() for x in dataset['tags']]
+
+            if 'tags' not in dataset:
+                dataset['tags'] = []
+
+            for tag in map(str.strip, data['Reikšminiai žodžiai'].split(';')):
+                key = tag.lower()
+
+                if key not in tags:
+                    tags[key] = {
+                        'id': str(uuid.uuid4()),
+                        'display_name': tag,
+                        'name': tag,
+                        'state': 'active',
+                        'vocabulary_id': None
+                    }
+
+                if key not in dataset_tags:
+                    write = True
+                    dataset['tags'].append(tags[key])
+
+            extras = {x['key']: x['value'] for x in dataset.get('extras', [])}
+
+            if 'extras' not in dataset:
+                dataset['extras'] = []
+
+            if 'IVPK Code' not in extras:
+                write = True
+                dataset['extras'].append({'key': 'IVPK Code', 'value': data['Kodas']})
+
+            if 'IVPK URL' not in extras:
+                write = True
+                dataset['extras'].append({'key': 'IVPK URL', 'value': data['key']})
+
+            if write:
+                logger.debug('export dataset %s', data['key'])
+                f.write(json.dumps(dataset) + '\n')
 
 
 def main():
@@ -155,38 +248,36 @@ def main():
         description=textwrap.dedent('''\
         Example:
 
-            ivpkimport ckan.jsonl ivpk.jsonl ckan-ivpk.jsonl
+            ivpkimport path/to/data/dir
+
         ''')
     )
 
     parser = argparse.ArgumentParser()
-    parser.add_argument('ckan', help='jsonl ckanapi dump')
-    parser.add_argument('ivpk', help='raw ivpk data from atviriduomenys.lt/data/ivpk')
-    parser.add_argument('output', help='output form jsonl ckanapi dump file')
-    parser.add_argument('-l', '--log', default='WARNING', help='log level, one of: debug, info, warning, error')
+    parser.add_argument('ckan_url', nargs='?', default='http://opendata.lt/', help='url of existing ckan instance')
+    parser.add_argument('path', nargs='?', default='data', help='path to a directory where all data files will be stored')
+    parser.add_argument('-l', '--log', default='INFO', help='log level, one of: debug, info, warning, error')
     args = parser.parse_args()
 
     logging.basicConfig(format='%(asctime)s %(levelname)s %(message)s', level=getattr(logging, args.log.upper()))
 
-    ivpk2ckan = IvpkToCkan()
+    ivpk_export_file = os.path.join(args.path, 'ivpk-export.jsonl')
+    orgs_old_file = os.path.join(args.path, 'orgs-old.jsonl')
+    orgs_new_file = os.path.join(args.path, 'orgs-new.jsonl')
+    datasets_old_file = os.path.join(args.path, 'datasets-old.jsonl')
+    datasets_new_file = os.path.join(args.path, 'datasets-new.jsonl')
 
-    with open(args.output, 'w', encoding='utf-8') as f:
-        for data in read_jsonl(args.ivpk):
-            if not data.get('Kodas'):
-                logger.warn('skip entry without Kodas: %s', data['key'])
-                continue
+    # logger.info('download ivpk dump from http://atviriduomenys.lt/')
+    # subprocess.check_call([
+    #     'wget', 'http://atviriduomenys.lt/data/ivpk/opendata-gov-lt/datasets.jsonl',
+    #     '-O', ivpk_export_file,
+    # ])
 
-            logger.info('importing %s', data['key'])
+    # Synchronize organizations
+    orgs = get_ckan_orgs(args.ckan_url, orgs_old_file)
+    create_orgs_new_file(orgs, ivpk_export_file, orgs_new_file)
 
-            try:
-                ckan = ivpk2ckan.convert(data)
-            except:
-                logger.error(
-                    "error while converting\n%s",
-                    json.dumps(data, indent=2, ensure_ascii=False).
-                    replace(r'\n', '\n').
-                    replace(r'\t', '  ')
-                )
-                raise
-
-            f.write(json.dumps(ckan) + '\n')
+    # Synchronize datasets
+    orgs = get_ckan_orgs(args.ckan_url, orgs_old_file)
+    tags, datasets = get_ckan_datasets(args.ckan_url, datasets_old_file)
+    create_datasets_new_file(orgs, tags, datasets, ivpk_export_file, datasets_new_file)
