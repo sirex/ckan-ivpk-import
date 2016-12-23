@@ -7,6 +7,7 @@ import unidecode
 import logging
 import os.path
 import subprocess
+import itertools
 
 logger = logging.getLogger(__name__)
 
@@ -74,11 +75,11 @@ def split_contact_info(value):
 
 def get_ckan_orgs(ckan_url, orgs_old_file):
     logger.info('export existing organizations from %s', ckan_url)
-    subprocess.check_call([
+    subprocess.run([
         'ckanapi', 'dump', 'organizations', '--all',
         '-O', orgs_old_file,
         '-r', ckan_url,
-    ])
+    ], check=True)
 
     orgs = {}
 
@@ -139,11 +140,11 @@ def create_orgs_new_file(orgs, ivpk_export_file, orgs_new_file):
 
 def get_ckan_datasets(ckan_url, datasets_old_file):
     logger.info('export existing datasets from %s', ckan_url)
-    subprocess.check_call([
+    subprocess.run([
         'ckanapi', 'dump', 'datasets', '--all',
         '-O', datasets_old_file,
         '-r', ckan_url,
-    ])
+    ], check=True)
 
     tags = {}
     datasets = {}
@@ -242,7 +243,7 @@ def create_datasets_new_file(orgs, tags, datasets, ivpk_export_file, datasets_ne
                 f.write(json.dumps(dataset) + '\n')
 
 
-def main():
+def main(argv=None):
     parser = argparse.ArgumentParser(
         formatter_class=argparse.RawDescriptionHelpFormatter,
         description=textwrap.dedent('''\
@@ -257,7 +258,7 @@ def main():
     parser.add_argument('ckan_url', nargs='?', default='http://opendata.lt/', help='url of existing ckan instance')
     parser.add_argument('path', nargs='?', default='data', help='path to a directory where all data files will be stored')
     parser.add_argument('-l', '--log', default='INFO', help='log level, one of: debug, info, warning, error')
-    args = parser.parse_args()
+    args = parser.parse_args(argv)
 
     logging.basicConfig(format='%(asctime)s %(levelname)s %(message)s', level=getattr(logging, args.log.upper()))
 
@@ -267,11 +268,12 @@ def main():
     datasets_old_file = os.path.join(args.path, 'datasets-old.jsonl')
     datasets_new_file = os.path.join(args.path, 'datasets-new.jsonl')
 
-    # logger.info('download ivpk dump from http://atviriduomenys.lt/')
-    # subprocess.check_call([
-    #     'wget', 'http://atviriduomenys.lt/data/ivpk/opendata-gov-lt/datasets.jsonl',
-    #     '-O', ivpk_export_file,
-    # ])
+    logger.info('download ivpk dump from http://atviriduomenys.lt/')
+    subprocess.run(itertools.chain(*[
+        ('curl', '-s', 'http://atviriduomenys.lt/data/ivpk/opendata-gov-lt/datasets.jsonl'),
+        ('-o', ivpk_export_file),
+        ('-z', ivpk_export_file) if os.path.exists(ivpk_export_file) else (),
+    ]), check=True)
 
     # Synchronize organizations
     orgs = get_ckan_orgs(args.ckan_url, orgs_old_file)

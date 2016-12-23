@@ -1,6 +1,11 @@
-.coverage
-.cache/
-__pycache__/
 *.egg-info/
 *.pyc
+.cache/
+.coverage
+.ipynb_checkpoints/
+__pycache__/
 data/
+venv/
+ckan.retry
+development.ini
+who.ini
