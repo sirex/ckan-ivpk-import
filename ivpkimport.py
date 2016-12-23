@@ -5,7 +5,7 @@ import textwrap
 import uuid
 import unidecode
 import logging
-import os.path
+import pathlib
 import subprocess
 import itertools
 
@@ -199,7 +199,7 @@ def create_datasets_new_file(orgs, tags, datasets, ivpk_export_file, datasets_ne
                     write = True
                     dataset = {
                         'id': str(uuid.uuid4()),
-                        'name': ('%s-' % data['Kodas']) + slugify(data['Pavadinimas']),
+                        'name': f'{data["Kodas"]}-{slugify(data["Pavadinimas"])}',
                         'title': data['Pavadinimas'],
                         'notes': data['Apibūdinimas'],
                         'maintainer': maintainer['name'] or '',
@@ -280,23 +280,23 @@ def main(argv=None):
 
     parser = argparse.ArgumentParser()
     parser.add_argument('ckan_url', nargs='?', default='http://opendata.lt/', help='url of existing ckan instance')
-    parser.add_argument('path', nargs='?', default='data', help='path to a directory where all data files will be stored')
+    parser.add_argument('path', nargs='?', type=pathlib.Path, default='data', help='path to a directory where all data files will be stored')
     parser.add_argument('-l', '--log', default='INFO', help='log level, one of: debug, info, warning, error')
     args = parser.parse_args(argv)
 
     logging.basicConfig(format='%(asctime)s %(levelname)s %(message)s', level=getattr(logging, args.log.upper()))
 
-    ivpk_export_file = os.path.join(args.path, 'ivpk-export.jsonl')
-    orgs_old_file = os.path.join(args.path, 'orgs-old.jsonl')
-    orgs_new_file = os.path.join(args.path, 'orgs-new.jsonl')
-    datasets_old_file = os.path.join(args.path, 'datasets-old.jsonl')
-    datasets_new_file = os.path.join(args.path, 'datasets-new.jsonl')
+    ivpk_export_file = args.path / 'ivpk-export.jsonl'
+    orgs_old_file = args.path / 'orgs-old.jsonl'
+    orgs_new_file = args.path / 'orgs-new.jsonl'
+    datasets_old_file = args.path / 'datasets-old.jsonl'
+    datasets_new_file = args.path / 'datasets-new.jsonl'
 
     logger.info('download ivpk dump from http://atviriduomenys.lt/')
     subprocess.run(itertools.chain(
         ('curl', '-s', 'http://atviriduomenys.lt/data/ivpk/opendata-gov-lt/datasets.jsonl'),
         ('-o', ivpk_export_file),
-        ('-z', ivpk_export_file) if os.path.exists(ivpk_export_file) else (),
+        ('-z', ivpk_export_file) if ivpk_export_file.exists() else (),
     ), check=True)
 
     # Synchronize organizations
