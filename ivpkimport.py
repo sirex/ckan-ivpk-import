@@ -47,6 +47,18 @@ def slugify(title=None, length=60):
     return slug[:length + begining_chars]
 
 
+def tagify(tag):
+    spl = re.split(r'\W+', tag, flags=re.UNICODE)
+    return ' '.join(spl)
+
+
+def fixcase(value):
+    if len(value) > 1 and value[:2].isalpha() and value[0].isupper() and value[1].islower():
+        return value[0].lower() + value[1:]
+    else:
+        return value
+
+
 def split_contact_info(value):
     result = {'email': [], 'phone': [], 'name': []}
 
@@ -81,10 +93,12 @@ def get_ckan_orgs(ckan_url, orgs_old_file):
         '-r', ckan_url,
     ], check=True)
 
+
+def read_ckan_orgs(orgs_file):
     orgs = {}
 
-    logger.info('read existing organizations from %s', orgs_old_file)
-    for data in read_jsonl(orgs_old_file):
+    logger.info('read organizations from %s', orgs_file)
+    for data in read_jsonl(orgs_file):
         extras = {x['key']: x['value'] for x in data.get('extras', [])}
         if 'IVPK Title' in extras:
             orgs[extras['IVPK Title']] = data
@@ -169,78 +183,88 @@ def create_datasets_new_file(orgs, tags, datasets, ivpk_export_file, datasets_ne
     with open(datasets_new_file, 'w', encoding='utf-8') as f:
         logger.info('convert ivpk datasets to ckan format')
         for data in read_jsonl(ivpk_export_file):
-            if not data.get('Kodas'):
-                logger.warn('skip entry without Kodas: %s', data['key'])
-                continue
+            try:
+                if not data.get('Kodas'):
+                    logger.warn('skip entry without Kodas: %s', data['key'])
+                    continue
 
-            logger.debug('importing %s', data['key'])
+                logger.debug('importing %s', data['key'])
 
-            maintainer = split_contact_info(data.get('Kontaktiniai duomenys'))
-            organization = orgs[data['Rinkmenos tvarkytojas']]
+                maintainer = split_contact_info(data.get('Kontaktiniai duomenys'))
+                organization = orgs[data['Rinkmenos tvarkytojas']]
 
-            write = False
+                write = False
 
-            if data['Kodas'] not in datasets:
-                write = True
-                dataset = {
-                    'id': str(uuid.uuid4()),
-                    'name': slugify(data['Pavadinimas']),
-                    'title': data['Pavadinimas'],
-                    'notes': data['Apibūdinimas'],
-                    'maintainer': maintainer['name'] or '',
-                    'maintainer_email': maintainer['email'],
-                    'url': data['Internetinis adresas'],
-                    'organization': organization,
-                    'owner_org': organization['id'],
-                    'private': False,
-                    'state': 'active',
-                    'tags': [],
-                    'type': 'dataset',
-                    'extras': [
-                        {'key': 'IVPK Code', 'value': data['Kodas']},
-                        {'key': 'IVPK URL', 'value': data['key']}
-                    ],
-                }
-            else:
-                dataset = datasets[data['Kodas']]
-
-            dataset_tags = [x['name'].lower() for x in dataset['tags']]
-
-            if 'tags' not in dataset:
-                dataset['tags'] = []
-
-            for tag in itertools.chain(map(str.strip, data['Reikšminiai žodžiai'].split(';')), ['IVPK import']):
-                key = tag.lower()
-
-                if key not in tags:
-                    tags[key] = {
-                        'id': str(uuid.uuid4()),
-                        'display_name': tag,
-                        'name': tag,
-                        'state': 'active',
-                        'vocabulary_id': None
-                    }
-
-                if key not in dataset_tags:
+                if data['Kodas'] not in datasets:
                     write = True
-                    dataset['tags'].append(tags[key])
+                    dataset = {
+                        'id': str(uuid.uuid4()),
+                        'name': slugify(data['Pavadinimas']),
+                        'title': data['Pavadinimas'],
+                        'notes': data['Apibūdinimas'],
+                        'maintainer': maintainer['name'] or '',
+                        'maintainer_email': maintainer['email'],
+                        'url': data['Internetinis adresas'],
+                        'organization': organization,
+                        'owner_org': organization['id'],
+                        'private': False,
+                        'state': 'active',
+                        'tags': [],
+                        'type': 'dataset',
+                        'extras': [
+                            {'key': 'IVPK Code', 'value': data['Kodas']},
+                            {'key': 'IVPK URL', 'value': data['key']}
+                        ],
+                    }
+                else:
+                    dataset = datasets[data['Kodas']]
 
-            extras = {x['key']: x['value'] for x in dataset.get('extras', [])}
+                dataset_tags = [x['name'].lower() for x in dataset['tags']]
 
-            if 'extras' not in dataset:
-                dataset['extras'] = []
+                if 'tags' not in dataset:
+                    dataset['tags'] = []
 
-            if 'IVPK Code' not in extras:
-                write = True
-                dataset['extras'].append({'key': 'IVPK Code', 'value': data['Kodas']})
+                ivpk_tags = map(fixcase, map(str.strip, data['Reikšminiai žodžiai'].replace(';', ',').split(',')))
+                ivpk_tags = filter(None, ivpk_tags)
+                for tag in itertools.chain(ivpk_tags, ['IVPK import']):
+                    key = tagify(tag).lower()
 
-            if 'IVPK URL' not in extras:
-                write = True
-                dataset['extras'].append({'key': 'IVPK URL', 'value': data['key']})
+                    if len(key) > 50:
+                        logger.warn("skip very long tag: %r", tag)
+                        continue
 
-            if write:
-                logger.debug('export dataset %s', data['key'])
-                f.write(json.dumps(dataset) + '\n')
+                    if key not in tags:
+                        tags[key] = {
+                            'id': str(uuid.uuid4()),
+                            'display_name': tag,
+                            'name': tagify(tag),
+                            'state': 'active',
+                        }
+
+                    if key not in dataset_tags:
+                        write = True
+                        dataset['tags'].append(tags[key])
+
+                extras = {x['key']: x['value'] for x in dataset.get('extras', [])}
+
+                if 'extras' not in dataset:
+                    dataset['extras'] = []
+
+                if 'IVPK Code' not in extras:
+                    write = True
+                    dataset['extras'].append({'key': 'IVPK Code', 'value': data['Kodas']})
+
+                if 'IVPK URL' not in extras:
+                    write = True
+                    dataset['extras'].append({'key': 'IVPK URL', 'value': data['key']})
+
+                if write:
+                    logger.debug('export dataset %s', data['key'])
+                    f.write(json.dumps(dataset) + '\n')
+            except:
+                sample = json.dumps(data, indent=2, ensure_ascii=False)
+                logger.error('error while processing following entry:\n%s', sample)
+                raise
 
 
 def main(argv=None):
@@ -276,10 +300,10 @@ def main(argv=None):
     ), check=True)
 
     # Synchronize organizations
-    orgs = get_ckan_orgs(args.ckan_url, orgs_old_file)
-    create_orgs_new_file(orgs, ivpk_export_file, orgs_new_file)
+    get_ckan_orgs(args.ckan_url, orgs_old_file)
+    create_orgs_new_file(read_ckan_orgs(orgs_old_file), ivpk_export_file, orgs_new_file)
 
     # Synchronize datasets
-    orgs = get_ckan_orgs(args.ckan_url, orgs_old_file)
+    orgs = read_ckan_orgs(orgs_new_file)
     tags, datasets = get_ckan_datasets(args.ckan_url, datasets_old_file)
     create_datasets_new_file(orgs, tags, datasets, ivpk_export_file, datasets_new_file)

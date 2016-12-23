@@ -29,10 +29,25 @@ def test_slugify():
     )
 
 
+def test_tagify():
+    from ivpkimport import tagify
+
+    assert tagify('finansai, rinkinys') == 'finansai rinkinys'
+
+
+def test_fixcase():
+    from ivpkimport import fixcase
+
+    assert fixcase('test') == 'test'
+    assert fixcase('Test') == 'test'
+    assert fixcase('T est') == 'T est'
+    assert fixcase('TEst') == 'TEst'
+
+
 def test_get_ckan_orgs(tmpdir, mocker):
     mocker.patch('subprocess.run')
 
-    from ivpkimport import get_ckan_orgs
+    from ivpkimport import get_ckan_orgs, read_ckan_orgs
 
     orgs_old_file = tmpdir.join('orgs-old.jsonl')
     orgs_old_file.write('\n'.join(map(json.dumps, [
@@ -40,7 +55,9 @@ def test_get_ckan_orgs(tmpdir, mocker):
         {'title': 'Org 2', 'extras': [{'key': 'IVPK Title', 'value': 'ORG2'}]},
     ])))
 
-    assert get_ckan_orgs(None, str(orgs_old_file)) == {
+    get_ckan_orgs(None, str(orgs_old_file))
+
+    assert read_ckan_orgs(str(orgs_old_file)) == {
         'Org 1': {'title': 'Org 1'},
         'ORG2': {'title': 'Org 2', 'extras': [{'key': 'IVPK Title', 'value': 'ORG2'}]},
     }
@@ -51,7 +68,7 @@ def test_create_orgs_new_file(tmpdir, mocker):
         UUID('{05700888-2ede-4cc2-beda-9480203a8244}'),
     ])
 
-    from ivpkimport import create_orgs_new_file
+    from ivpkimport import create_orgs_new_file, read_ckan_orgs
 
     orgs = {'Org 1': {'title': 'Org 1'}}
 
@@ -66,20 +83,22 @@ def test_create_orgs_new_file(tmpdir, mocker):
 
     create_orgs_new_file(orgs, str(ivpk_export_file), str(orgs_new_file))
 
-    assert json.loads(orgs_new_file.read()) == {
-        'id': '05700888-2ede-4cc2-beda-9480203a8244',
-        'name': 'informacines-visuomenes-pletros-komitetas--susisiekimo-ministerijos',
-        'title': 'Informacinės visuomenės plėtros komitetas prie Susisiekimo ministerijos',
-        'type': 'organization',
-        'state': 'active',
-        'is_organization': True,
-        'approval_status': 'approved',
-        'extras': [
-            {
-                'key': 'IVPK Title',
-                'value': 'Informacinės visuomenės plėtros komitetas prie Susisiekimo ministerijos',
-            },
-        ],
+    assert read_ckan_orgs(str(orgs_new_file)) == {
+        'Informacinės visuomenės plėtros komitetas prie Susisiekimo ministerijos': {
+            'id': '05700888-2ede-4cc2-beda-9480203a8244',
+            'name': 'informacines-visuomenes-pletros-komitetas--susisiekimo-ministerijos',
+            'title': 'Informacinės visuomenės plėtros komitetas prie Susisiekimo ministerijos',
+            'type': 'organization',
+            'state': 'active',
+            'is_organization': True,
+            'approval_status': 'approved',
+            'extras': [
+                {
+                    'key': 'IVPK Title',
+                    'value': 'Informacinės visuomenės plėtros komitetas prie Susisiekimo ministerijos',
+                },
+            ],
+        }
     }
 
 
@@ -138,7 +157,7 @@ def test_create_datasets_new_file(tmpdir, mocker):
         'Alternatyvus pavadinimas': '',
         'Apibūdinimas': 'Pateikiama aktuali informacija apie įstatymais nustatytų valstybės ir žinybinių registrų steigimą, kūrimo eigą bei funkcionavimą, registruose kaupiamus duomenis, registrus tvarkančias įstaigas.',
         'Kategorija (informacijos sritis)': 'Valstybės valdymas, viešasis administravimas',
-        'Reikšminiai žodžiai': 'Valstybinis registras; žinybinis registras; registrų steigimas; registrų funkcionavimas; nekilnojamieji, kilnojamieji daiktai; juridiniai faktai',
+        'Reikšminiai žodžiai': 'Valstybinis registras; žinybinis registras; registrų steigimas; registrų funkcionavimas; kilnojamieji daiktai; juridiniai faktai',
         'Rinkmenos tvarkytojas': 'Informacinės visuomenės plėtros komitetas prie Susisiekimo ministerijos',
         'Kontaktiniai duomenys': '861293797 i.zdanaviciene@ivpk.lt',
         'Rinkmenos rūšis': 'Valstybės registras',
@@ -186,42 +205,36 @@ def test_create_datasets_new_file(tmpdir, mocker):
                 'display_name': 'žinybinis registras',
                 'name': 'žinybinis registras',
                 'state': 'active',
-                'vocabulary_id': None,
             },
             {
                 'id': '3cfa6253-050e-447b-820c-2a8d19a9d3d6',
                 'display_name': 'registrų steigimas',
                 'name': 'registrų steigimas',
                 'state': 'active',
-                'vocabulary_id': None,
             },
             {
                 'id': '08e014cb-27b3-45b5-ad83-42be48abe8b7',
                 'display_name': 'registrų funkcionavimas',
                 'name': 'registrų funkcionavimas',
                 'state': 'active',
-                'vocabulary_id': None,
             },
             {
                 'id': 'e48d28b0-2b72-4d9b-902f-1fdd70ba9c00',
-                'display_name': 'nekilnojamieji, kilnojamieji daiktai',
-                'name': 'nekilnojamieji, kilnojamieji daiktai',
+                'display_name': 'kilnojamieji daiktai',
+                'name': 'kilnojamieji daiktai',
                 'state': 'active',
-                'vocabulary_id': None,
             },
             {
                 'id': '276c6c37-79d9-4d54-8834-a239e18f8c14',
                 'display_name': 'juridiniai faktai',
                 'name': 'juridiniai faktai',
                 'state': 'active',
-                'vocabulary_id': None,
             },
             {
                 'id': '8e18339a-9307-4237-b698-0f94213cb492',
                 'display_name': 'IVPK import',
                 'name': 'IVPK import',
                 'state': 'active',
-                'vocabulary_id': None,
             },
         ],
     }
@@ -294,14 +307,12 @@ def test_main(tmpdir, mocker):
                 'display_name': 'žinybinis registras',
                 'name': 'žinybinis registras',
                 'state': 'active',
-                'vocabulary_id': None,
             },
             {
                 'id': '8e18339a-9307-4237-b698-0f94213cb492',
                 'display_name': 'IVPK import',
                 'name': 'IVPK import',
                 'state': 'active',
-                'vocabulary_id': None,
             },
         ],
     }
