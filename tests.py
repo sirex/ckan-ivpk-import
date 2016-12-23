@@ -116,6 +116,7 @@ def test_create_datasets_new_file(tmpdir, mocker):
         UUID('{08e014cb-27b3-45b5-ad83-42be48abe8b7}'),
         UUID('{e48d28b0-2b72-4d9b-902f-1fdd70ba9c00}'),
         UUID('{276c6c37-79d9-4d54-8834-a239e18f8c14}'),
+        UUID('{8e18339a-9307-4237-b698-0f94213cb492}'),
     ])
 
     from ivpkimport import create_datasets_new_file
@@ -215,6 +216,13 @@ def test_create_datasets_new_file(tmpdir, mocker):
                 'state': 'active',
                 'vocabulary_id': None,
             },
+            {
+                'id': '8e18339a-9307-4237-b698-0f94213cb492',
+                'display_name': 'IVPK import',
+                'name': 'IVPK import',
+                'state': 'active',
+                'vocabulary_id': None,
+            },
         ],
     }
 
@@ -223,6 +231,7 @@ def test_main(tmpdir, mocker):
     mocker.patch('subprocess.run')
     mocker.patch('uuid.uuid4', side_effect=[
         UUID('{e6d487f6-41ca-4d1a-9420-e831ca3bc7c1}'),
+        UUID('{8e18339a-9307-4237-b698-0f94213cb492}'),
     ])
 
     from ivpkimport import main
@@ -284,6 +293,13 @@ def test_main(tmpdir, mocker):
                 'id': 'e6d487f6-41ca-4d1a-9420-e831ca3bc7c1',
                 'display_name': 'žinybinis registras',
                 'name': 'žinybinis registras',
+                'state': 'active',
+                'vocabulary_id': None,
+            },
+            {
+                'id': '8e18339a-9307-4237-b698-0f94213cb492',
+                'display_name': 'IVPK import',
+                'name': 'IVPK import',
                 'state': 'active',
                 'vocabulary_id': None,
             },

@@ -209,7 +209,7 @@ def create_datasets_new_file(orgs, tags, datasets, ivpk_export_file, datasets_ne
             if 'tags' not in dataset:
                 dataset['tags'] = []
 
-            for tag in map(str.strip, data['Reikšminiai žodžiai'].split(';')):
+            for tag in itertools.chain(map(str.strip, data['Reikšminiai žodžiai'].split(';')), ['IVPK import']):
                 key = tag.lower()
 
                 if key not in tags:
