@@ -179,7 +179,7 @@ def test_create_datasets_new_file(tmpdir, mocker):
     assert json.loads(datasets_new_file.read()) == {
         'id': '05700888-2ede-4cc2-beda-9480203a8244',
         'type': 'dataset',
-        'name': 'registru-ir-valstybes-informaciniu-sistemu-registras',
+        'name': '5503-registru-ir-valstybes-informaciniu-sistemu-registras',
         'title': 'Registrų ir valstybės informacinių sistemų registras',
         'notes': 'Pateikiama aktuali informacija apie įstatymais nustatytų valstybės ir žinybinių registrų steigimą, kūrimo eigą bei funkcionavimą, registruose kaupiamus duomenis, registrus tvarkančias įstaigas.',
         'url': 'http://www.registrai.lt/',
