@@ -10,3 +10,4 @@ ckan:
 reset:
 	sudo -u postgres dropdb ckan_default
 	ansible-playbook --ask-become-pass -c local -i ckan, -e path=$(PWD) -t create_ckan_db ckan.yml
+	cd venv/src/ckan && ../../bin/paster search-index rebuild -c ../../../development.ini
