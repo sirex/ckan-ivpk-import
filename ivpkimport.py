@@ -249,7 +249,7 @@ def main(argv=None):
         description=textwrap.dedent('''\
         Example:
 
-            ivpkimport path/to/data/dir
+            ivpkimport http://opendata.lt/ path/to/data/dir
 
         ''')
     )
@@ -269,11 +269,11 @@ def main(argv=None):
     datasets_new_file = os.path.join(args.path, 'datasets-new.jsonl')
 
     logger.info('download ivpk dump from http://atviriduomenys.lt/')
-    subprocess.run(itertools.chain(*[
+    subprocess.run(itertools.chain(
         ('curl', '-s', 'http://atviriduomenys.lt/data/ivpk/opendata-gov-lt/datasets.jsonl'),
         ('-o', ivpk_export_file),
         ('-z', ivpk_export_file) if os.path.exists(ivpk_export_file) else (),
-    ]), check=True)
+    ), check=True)
 
     # Synchronize organizations
     orgs = get_ckan_orgs(args.ckan_url, orgs_old_file)
