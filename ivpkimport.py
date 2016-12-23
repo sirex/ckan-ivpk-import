@@ -199,7 +199,7 @@ def create_datasets_new_file(orgs, tags, datasets, ivpk_export_file, datasets_ne
                     write = True
                     dataset = {
                         'id': str(uuid.uuid4()),
-                        'name': slugify(data['Pavadinimas']),
+                        'name': ('%s-' % data['Kodas']) + slugify(data['Pavadinimas']),
                         'title': data['Pavadinimas'],
                         'notes': data['Apibūdinimas'],
                         'maintainer': maintainer['name'] or '',
