@@ -72,6 +72,7 @@
         lc_ctype: C.UTF-8
         template: template0
       notify: create ckan database tables
+      tags: [create_ckan_db]
 
     - name: create datastore_default postgresql user
       become: true
@@ -110,12 +111,12 @@
 
     - name: create solr schema file backup
       become: true
-      copy: src=/etc/solr/conf/schema.xml dest=/etc/solr/conf/schema.xml.bak force=no
+      command: mv /etc/solr/conf/schema.xml /etc/solr/conf/schema.xml.bak creates=/etc/solr/conf/schema.xml.bak
 
     - name: replace solr schema file with one provided by ckan
       become: true
       notify: restart solr
-      file: src={{ ckan }}/ckan/config/solr/schema.xml dest=/etc/solr/conf/schema.xml state=link force=yes
+      command: cp -a {{ ckan }}/ckan/config/solr/schema.xml /etc/solr/conf/schema.xml creates=/etc/solr/conf/schema.xml
 
     - name: create symbolic link to who.ini
       file: src={{ ckan }}/who.ini dest={{ path }}/who.ini state=link
