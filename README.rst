@@ -51,7 +51,7 @@ Command bellow::
 Will produce ``data/orgs-new.jsonl`` and ``data/datasets-new.jsonl`` files. You
 can use these file to import data to CKAN::
 
-  ckanapi load organizations --input=data/organizations-new.jsonl -c production.ini
+  ckanapi load organizations --input=data/orgs-new.jsonl -c production.ini
   ckanapi load datasets --input=data/datasets-new.jsonl -c production.ini
 
 ``ivpkimport`` script will only generate missing or updated entries.
